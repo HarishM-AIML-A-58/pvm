@@ -19,7 +19,7 @@ function Build-QemuCommand {
     $accelOption = if ($Decision.Accelerator -eq "whpx") {
         "whpx,kernel-irqchip=off"
     } elseif ($Decision.Accelerator -eq "tcg") {
-        "tcg,thread=multi"
+        "tcg"
     } else {
         $Decision.Accelerator
     }
@@ -54,8 +54,8 @@ function Build-QemuCommand {
 
     # 7. UEFI / BIOS firmware
     if ($Decision.UseUefi -and $Decision.UefiFirmware) {
-        $argsList.Add("-bios")
-        $argsList.Add("`"$($Decision.UefiFirmware)`"")
+        $argsList.Add("-drive")
+        $argsList.Add("if=pflash,format=raw,readonly=on,file=`"$($Decision.UefiFirmware)`"")
     }
 
     # 8. Display & Graphics

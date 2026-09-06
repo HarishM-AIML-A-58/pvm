@@ -9,11 +9,10 @@ build_qemu_command() {
 
     # 2. Machine and Accelerator
     if [ "$DECISION_ACCEL" = "tcg" ]; then
-        QEMU_ARGS+=("-machine" "q35,accel=tcg,thread=multi")
+        QEMU_ARGS+=("-machine" "q35,accel=tcg")
     else
         QEMU_ARGS+=("-machine" "q35,accel=$DECISION_ACCEL")
     fi
-
 
     # 3. CPU model
     if [ "$DECISION_ACCEL" = "kvm" ] || [ "$DECISION_ACCEL" = "hvf" ]; then
@@ -33,7 +32,7 @@ build_qemu_command() {
 
     # 6. UEFI Firmware
     if [ "$DECISION_UEFI" = "true" ] && [ -n "$DECISION_UEFI_FW" ]; then
-        QEMU_ARGS+=("-bios" "$DECISION_UEFI_FW")
+        QEMU_ARGS+=("-drive" "if=pflash,format=raw,readonly=on,file=$DECISION_UEFI_FW")
     fi
 
     # 7. Display

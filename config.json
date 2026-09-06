@@ -9,7 +9,7 @@
     "display": "sdl",
     "network": "nat",
     "ssh_port": 2222,
-    "uefi": true,
+    "uefi": false,
     "arch": "x86_64"
   },
   "backends": {

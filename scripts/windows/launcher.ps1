@@ -124,7 +124,9 @@ Write-Host ""
 try {
     $process = Start-Process -FilePath $cmdSpec.Executable -ArgumentList $cmdSpec.Arguments -Wait -PassThru -NoNewWindow
     Write-Host "  [+] Virtual Machine session terminated with exit code $($process.ExitCode)." -ForegroundColor Cyan
+    exit $process.ExitCode
 } catch {
     Write-Host "  [X] Failed to launch QEMU: $_" -ForegroundColor Red
+    exit 1
 }
 

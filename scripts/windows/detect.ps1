@@ -80,7 +80,7 @@ function Get-HostInformation {
             $hostInfo.QemuPath = $qemuExe
             
             # Query QEMU version
-            $verOutput = & $qemuExe --version 2>&1
+            $verOutput = (& $qemuExe --version 2>&1) -join "`n"
             if ($verOutput -match "version\s+([0-9\.]+)") {
                 $hostInfo.QemuVersion = $Matches[1]
             }
