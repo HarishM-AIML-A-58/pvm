@@ -1,0 +1,30 @@
+{
+  "vm_defaults": {
+    "memory_percent": 50,
+    "memory_min_mb": 2048,
+    "memory_max_mb": 16384,
+    "cores_percent": 50,
+    "cores_min": 2,
+    "cores_max": 8,
+    "display": "sdl",
+    "network": "nat",
+    "ssh_port": 2222,
+    "uefi": true,
+    "arch": "x86_64"
+  },
+  "backends": {
+    "windows": {
+      "relative_qemu_path": "backends/windows/qemu",
+      "prefer_accel": "whpx",
+      "fallback_accel": "tcg"
+    },
+    "linux": {
+      "prefer_accel": "kvm",
+      "fallback_accel": "tcg"
+    },
+    "macos": {
+      "prefer_accel": "hvf",
+      "fallback_accel": "tcg"
+    }
+  }
+}
