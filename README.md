@@ -59,8 +59,18 @@ It allows you to plug your SSD into any **Windows, Linux, or macOS** host comput
 
 ## 🚀 How to Use
 
-### On Windows
-Simply **double-click** `launch.bat` or run from PowerShell/CMD:
+### 🎨 Graphical User Interface (GUI Launcher)
+For a visual dashboard with hardware metrics, VM selection, interactive RAM/CPU sliders, and real-time safety check warnings:
+
+- **Windows**: Double-click **`launch_gui.bat`**
+- **Linux / macOS**: Execute **`./launch_gui.sh`**
+
+---
+
+### 💻 Command-Line Interface (CLI Launcher)
+
+#### On Windows
+Double-click `launch.bat` or run from PowerShell/CMD:
 ```cmd
 launch.bat
 ```
@@ -73,7 +83,7 @@ launch.bat -ListVMs         # List available VMs
 launch.bat -VmName <name>   # Direct-boot specific VM
 ```
 
-### On Linux / macOS
+#### On Linux / macOS
 Run in terminal:
 ```bash
 ./launch.sh

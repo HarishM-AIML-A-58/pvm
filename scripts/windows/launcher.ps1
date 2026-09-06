@@ -9,6 +9,8 @@ param(
     [switch]$DetectOnly,
     [switch]$DryRun,
     [switch]$ListVMs,
+    [switch]$Setup,
+    [switch]$Delete,
     [string]$VmName = "",
     [switch]$NoPrompt
 )
@@ -31,6 +33,98 @@ Show-HostInfo -HostInfo $hostInfo
 
 if ($DetectOnly) {
     Write-Host "  [i] Detection completed (-DetectOnly flag specified)." -ForegroundColor Cyan
+    exit 0
+}
+
+# Setup Mode Logic
+if ($Setup) {
+    . (Join-Path $ScriptDir "setup_core.ps1")
+    Write-Host "`n  [+] NEW VM SETUP" -ForegroundColor Green
+    $vmsDir = Join-Path $RootDir "vms"
+    
+    $vmNameSetup = Read-Host "  VM Name"
+    $val = Test-VmNameValid -VmName $vmNameSetup -VmsDir $vmsDir
+    if (-not $val.IsValid) { Write-Host "  [!] $($val.Message)" -ForegroundColor Red; exit 1 }
+
+    $isoPath = Read-Host "  ISO File Path (e.g. C:\path\to\ubuntu.iso)"
+    $valIso = Test-IsoFileValid -IsoPath $isoPath
+    if (-not $valIso.IsValid) { Write-Host "  [!] $($valIso.Message)" -ForegroundColor Red; exit 1 }
+
+    $diskSizeStr = Read-Host "  Root Disk Size (GB) [64]"
+    if ([string]::IsNullOrWhiteSpace($diskSizeStr)) { $diskSizeStr = "64" }
+    $diskSizeSetup = [int]$diskSizeStr
+
+    $valSpace = Test-DiskSpaceAvailable -RequestedGB $diskSizeSetup -HostInfo $hostInfo
+    if (-not $valSpace.IsValid) { Write-Host "  [!] $($valSpace.Message)" -ForegroundColor Red; exit 1 }
+    if ($valSpace.Level -eq "WARNING") { Write-Host "  [!] $($valSpace.Message)" -ForegroundColor Yellow }
+
+    Write-Host "  Creating VM..." -NoNewline
+    $res = New-VmInstance -VmName $vmNameSetup -VmsDir $vmsDir -DiskSizeGB $diskSizeSetup -HostInfo $hostInfo
+    if (-not $res.Success) {
+        Write-Host " Failed." -ForegroundColor Red
+        Write-Host "  [!] $($res.Message)" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host " Done." -ForegroundColor Green
+
+    # Launch it immediately
+    $selectedVmSetup = [PSCustomObject]@{ Name = $vmNameSetup; FullPath = $res.VmDir; DiskSizeBytes = 0 }
+    $decisionSetup = Invoke-DecisionEngine -HostInfo $hostInfo -RootDir $RootDir -VmDir $res.VmDir
+    $decisionSetup | Add-Member -NotePropertyName IsoPath -NotePropertyValue $isoPath -Force
+    
+    $cmdSpecSetup = Build-QemuCommand -Decision $decisionSetup
+    Write-Host "  [*] Launching Installer for '$vmNameSetup'..." -ForegroundColor Green
+    try {
+        $processSetup = Start-Process -FilePath $cmdSpecSetup.Executable -ArgumentList $cmdSpecSetup.Arguments -Wait -PassThru -NoNewWindow
+        exit $processSetup.ExitCode
+    } catch {
+        Write-Host "  [X] Failed to launch QEMU: $_" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Delete Mode Logic
+if ($Delete) {
+    if (-not $VmName) {
+        Write-Host "  [!] Please specify the VM to delete using -VmName <name>" -ForegroundColor Red
+        exit 1
+    }
+
+    $vmsDir = Join-Path $RootDir "vms"
+    $targetDir = Join-Path $vmsDir $VmName
+
+    if (-not (Test-Path $targetDir)) {
+        Write-Host "  [!] VM '$VmName' not found." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "`n  [-] DELETE VM" -ForegroundColor Red
+    Write-Host "  WARNING: You are about to permanently delete the VM '$VmName'." -ForegroundColor Yellow
+    Write-Host "  All data will be lost. This action cannot be undone." -ForegroundColor Yellow
+    
+    if (-not $NoPrompt) {
+        $confirm = Read-Host "  Are you sure? (y/N)"
+        if ($confirm -notmatch "^y(es)?`$") {
+            Write-Host "  Aborted." -ForegroundColor Cyan
+            exit 0
+        }
+    }
+
+    $files = Get-ChildItem -Path $targetDir -Recurse -File
+    $total = $files.Count + 1
+    $i = 0
+
+    foreach ($f in $files) {
+        $i++
+        Write-Progress -Activity "Deleting VM '$VmName'" -Status "Removing: $($f.Name)" -PercentComplete (($i / $total) * 100)
+        Remove-Item -Path $f.FullName -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Progress -Activity "Deleting VM '$VmName'" -Status "Removing directory..." -PercentComplete (($total / $total) * 100)
+    Remove-Item -Path $targetDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Progress -Activity "Deleting VM '$VmName'" -Completed
+
+    Write-Host "  [+] Successfully deleted VM '$VmName'." -ForegroundColor Green
     exit 0
 }
 

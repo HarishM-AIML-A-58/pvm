@@ -58,6 +58,14 @@ function Build-QemuCommand {
         $argsList.Add("if=pflash,format=raw,readonly=on,file=`"$($Decision.UefiFirmware)`"")
     }
 
+    # 7.5 CD-ROM ISO Boot
+    if ($Decision.IsoPath) {
+        $argsList.Add("-cdrom")
+        $argsList.Add("`"$($Decision.IsoPath)`"")
+        $argsList.Add("-boot")
+        $argsList.Add("d")
+    }
+
     # 8. Display & Graphics
     $argsList.Add("-vga")
     $argsList.Add("virtio")

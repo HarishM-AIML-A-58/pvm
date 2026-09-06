@@ -22,6 +22,8 @@ while [[ $# -gt 0 ]]; do
         --detect-only|-d) DETECT_ONLY=1; shift ;;
         --dry-run|-n)     DRY_RUN=1; shift ;;
         --list-vms|-l)    LIST_VMS=1; shift ;;
+        --setup|-s)       SETUP_MODE=1; shift ;;
+        --delete)         DELETE_MODE=1; shift ;;
         --vm-name|-v)     TARGET_VM_NAME="$2"; shift 2 ;;
         --no-prompt|-y)   NO_PROMPT=1; shift ;;
         *)                echo "Unknown option: $1"; exit 1 ;;
@@ -36,6 +38,108 @@ show_host_info
 
 if [ "$DETECT_ONLY" -eq 1 ]; then
     echo "  [i] Detection completed (--detect-only specified)."
+    exit 0
+fi
+
+if [ "$SETUP_MODE" -eq 1 ]; then
+    source "$SCRIPT_DIR/setup_core.sh"
+    echo -e "\n${COLOR_GREEN}  [+] NEW VM SETUP${COLOR_RESET}"
+    VMS_DIR="$ROOT_DIR/vms"
+    
+    read -p "  VM Name: " SETUP_VM_NAME
+    VAL_NAME=$(test_vm_name_valid "$SETUP_VM_NAME" "$VMS_DIR")
+    if [[ "$VAL_NAME" == false* ]]; then
+        echo -e "${COLOR_RED}  [!] ${VAL_NAME#*|}${COLOR_RESET}"
+        exit 1
+    fi
+    
+    read -p "  ISO File Path: " SETUP_ISO_PATH
+    VAL_ISO=$(test_iso_file_valid "$SETUP_ISO_PATH")
+    if [[ "$VAL_ISO" == false* ]]; then
+        IFS='|' read -ra ARR <<< "$VAL_ISO"
+        echo -e "${COLOR_RED}  [!] ${ARR[1]}${COLOR_RESET}"
+        exit 1
+    fi
+    
+    read -p "  Root Disk Size (GB) [64]: " SETUP_DISK_SIZE
+    SETUP_DISK_SIZE=${SETUP_DISK_SIZE:-64}
+    
+    VAL_SPACE=$(test_disk_space_available "$SETUP_DISK_SIZE" "$HOST_SSD_FREE_GB")
+    if [[ "$VAL_SPACE" == false* ]]; then
+        IFS='|' read -ra ARR <<< "$VAL_SPACE"
+        echo -e "${COLOR_RED}  [!] ${ARR[2]}${COLOR_RESET}"
+        exit 1
+    elif [[ "$VAL_SPACE" == true*WARNING* ]]; then
+        IFS='|' read -ra ARR <<< "$VAL_SPACE"
+        echo -e "${COLOR_YELLOW}  [!] ${ARR[2]}${COLOR_RESET}"
+    fi
+    
+    echo -n "  Creating VM... "
+    RES_NEW=$(new_vm_instance "$SETUP_VM_NAME" "$VMS_DIR" "$SETUP_DISK_SIZE" "$QEMU_PATH")
+    if [[ "$RES_NEW" == false* ]]; then
+        echo -e "${COLOR_RED}Failed.${COLOR_RESET}"
+        IFS='|' read -ra ARR <<< "$RES_NEW"
+        echo -e "${COLOR_RED}  [!] ${ARR[1]}${COLOR_RESET}"
+        exit 1
+    fi
+    echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"
+    
+    IFS='|' read -ra ARR <<< "$RES_NEW"
+    TARGET_DIR="${ARR[2]}"
+    
+    run_decision_engine "$ROOT_DIR" "$TARGET_DIR"
+    DECISION_UEFI="false"
+    DECISION_ISO="$SETUP_ISO_PATH"
+    
+    build_qemu_command
+    echo -e "${COLOR_GREEN}  [*] Launching Installer for '$SETUP_VM_NAME'...${COLOR_RESET}"
+    "$QEMU_PATH" "${QEMU_ARGS[@]}"
+    exit $?
+fi
+
+# Delete Mode Logic
+if [ "$DELETE_MODE" -eq 1 ]; then
+    if [ -z "$TARGET_VM_NAME" ]; then
+        echo -e "${COLOR_RED}  [!] Please specify the VM to delete using --vm-name <name>${COLOR_RESET}"
+        exit 1
+    fi
+
+    VMS_DIR="$ROOT_DIR/vms"
+    TARGET_DIR="$VMS_DIR/$TARGET_VM_NAME"
+
+    if [ ! -d "$TARGET_DIR" ]; then
+        echo -e "${COLOR_RED}  [!] VM '$TARGET_VM_NAME' not found.${COLOR_RESET}"
+        exit 1
+    fi
+
+    echo -e "\n${COLOR_RED}  [-] DELETE VM${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}  WARNING: You are about to permanently delete the VM '$TARGET_VM_NAME'.${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}  All data will be lost. This action cannot be undone.${COLOR_RESET}"
+    
+    if [ "$NO_PROMPT" -eq 0 ]; then
+        read -p "  Are you sure? (y/N) " CONFIRM
+        if [[ ! "$CONFIRM" =~ ^[Yy](es)?$ ]]; then
+            echo -e "${COLOR_CYAN}  Aborted.${COLOR_RESET}"
+            exit 0
+        fi
+    fi
+
+    TOTAL_FILES=$(find "$TARGET_DIR" -type f | wc -l)
+    CURRENT=0
+
+    find "$TARGET_DIR" -type f | while read -r FILE; do
+        FILENAME=$(basename "$FILE")
+        CURRENT=$((CURRENT + 1))
+        
+        # Simple terminal progress indicator
+        printf "\r  Removing: %-30s [%d/%d]" "$FILENAME" "$CURRENT" "$TOTAL_FILES"
+        rm -f "$FILE"
+    done
+    
+    echo -e "\n  Removing directory..."
+    rm -rf "$TARGET_DIR"
+    
+    echo -e "${COLOR_GREEN}  [+] Successfully deleted VM '$TARGET_VM_NAME'.${COLOR_RESET}"
     exit 0
 fi
 

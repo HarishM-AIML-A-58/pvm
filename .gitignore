@@ -1,2 +1,2 @@
-vms/default-linux/disk.qcow2
+vms/omarchy/*
 backends/windows/qemu/*

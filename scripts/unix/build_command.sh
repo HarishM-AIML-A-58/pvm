@@ -35,6 +35,11 @@ build_qemu_command() {
         QEMU_ARGS+=("-drive" "if=pflash,format=raw,readonly=on,file=$DECISION_UEFI_FW")
     fi
 
+    # 6.5 CD-ROM ISO Boot
+    if [ -n "$DECISION_ISO" ]; then
+        QEMU_ARGS+=("-cdrom" "$DECISION_ISO" "-boot" "d")
+    fi
+
     # 7. Display
     QEMU_ARGS+=("-vga" "virtio")
     case "$DECISION_DISPLAY" in
