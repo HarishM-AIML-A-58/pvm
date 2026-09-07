@@ -11,7 +11,13 @@ param(
 
 # Root of the SSD
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RootDir = Split-Path (Split-Path $ScriptDir -Parent) -Parent
+if (Test-Path (Join-Path $ScriptDir "vms")) {
+    $RootDir = $ScriptDir
+} elseif (Test-Path (Join-Path (Split-Path (Split-Path $ScriptDir -Parent) -Parent) "vms")) {
+    $RootDir = Split-Path (Split-Path $ScriptDir -Parent) -Parent
+} else {
+    $RootDir = $ScriptDir
+}
 
 # Dot-source helper modules
 . (Join-Path $ScriptDir "detect.ps1")
@@ -37,20 +43,27 @@ if (Test-Path $vmsDir) {
     }
 }
 
-if ($vmList.Count -eq 0) {
-    [System.Windows.Forms.MessageBox]::Show(
-        "No virtual machines found in '$vmsDir'. Please create a VM directory with 'disk.qcow2'.",
-        "Portable VM Launcher Error",
-        [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Error
-    )
-    exit 1
+# Default initial VM selection
+$initialVmName = $null
+if ($vmList.Count -gt 0) {
+    $initialVmName = if ($VmName -and ($vmList -contains $VmName)) { $VmName } else { $vmList[0] }
 }
 
-# Default initial VM selection
-$initialVmName = if ($VmName -and ($vmList -contains $VmName)) { $VmName } else { $vmList[0] }
-$initialVmDir = Join-Path $vmsDir $initialVmName
-$initialDecision = Invoke-DecisionEngine -HostInfo $hostInfo -RootDir $RootDir -VmDir $initialVmDir
+if ($initialVmName) {
+    $initialVmDir = Join-Path $vmsDir $initialVmName
+    $initialDecision = Invoke-DecisionEngine -HostInfo $hostInfo -RootDir $RootDir -VmDir $initialVmDir
+} else {
+    $initialDecision = [PSCustomObject]@{
+        VmName = ""
+        DiskPath = ""
+        AllocatedRamMB = 2048
+        AllocatedCores = 2
+        DisplayMode = "sdl"
+        Accelerator = if ($hostInfo.WhpxAvailable) { "whpx" } else { "tcg" }
+        IsValid = $false
+        Errors = @("No virtual machines found. Click '+ New VM' to create one.")
+    }
+}
 
 # Acceleration status string
 $accelStatus = "TCG Emulation (Slow)"
@@ -315,25 +328,37 @@ function Update-Diagnostics {
     }
 
     # Sync Decision object
+    $selectedVm = $cmbVm.SelectedItem
     $existingIso = $script:currentDecision.IsoPath
 
-    $targetVmDir = Join-Path $vmsDir $cmbVm.SelectedItem
-    $script:currentDecision = Invoke-DecisionEngine -HostInfo $hostInfo -RootDir $RootDir -VmDir $targetVmDir
-    $script:currentDecision.AllocatedRamMB = $ramVal
-    $script:currentDecision.AllocatedCores = $cpuVal
-    $script:currentDecision.DisplayMode = $cmbDisplay.SelectedItem
-    $script:currentDecision.Accelerator = $cmbAccel.SelectedItem
-    
-    if ($existingIso) {
-        $script:currentDecision | Add-Member -NotePropertyName IsoPath -NotePropertyValue $existingIso -Force
+    if ($selectedVm) {
+        $targetVmDir = Join-Path $vmsDir $selectedVm
+        $script:currentDecision = Invoke-DecisionEngine -HostInfo $hostInfo -RootDir $RootDir -VmDir $targetVmDir
+        $script:currentDecision.AllocatedRamMB = $ramVal
+        $script:currentDecision.AllocatedCores = $cpuVal
+        $script:currentDecision.DisplayMode = $cmbDisplay.SelectedItem
+        $script:currentDecision.Accelerator = $cmbAccel.SelectedItem
+        
+        if ($existingIso) {
+            $script:currentDecision | Add-Member -NotePropertyName IsoPath -NotePropertyValue $existingIso -Force
+        }
+
+        $statusMsg = "Ready to Launch."
+        if ($existingIso) { $statusMsg = "Ready to Install! (ISO attached)" }
+        if (-not $script:currentDecision.IsValid) {
+            $statusMsg = "Cannot Launch: $($script:currentDecision.Errors -join '; ')"
+            $lblStatus.ForeColor = [System.Drawing.Color]::Crimson
+        } else {
+            $lblStatus.ForeColor = [System.Drawing.Color]::DarkBlue
+        }
+
+        $lblStatus.Text = "Target VM: $($script:currentDecision.VmName)`r`n" +
+                          "Disk Image: $($script:currentDecision.DiskPath)`r`n" +
+                          "Status: $statusMsg"
+    } else {
+        $lblStatus.Text = "No virtual machines found. Click '+ New VM' to create one."
+        $lblStatus.ForeColor = [System.Drawing.Color]::Crimson
     }
-
-    $statusMsg = "Ready to Launch."
-    if ($existingIso) { $statusMsg = "Ready to Install! (ISO attached)" }
-
-    $lblStatus.Text = "Target VM: $($script:currentDecision.VmName)`r`n" +
-                      "Disk Image: $($script:currentDecision.DiskPath)`r`n" +
-                      "Status: $statusMsg"
 }
 
 # Event Listeners for TrackBars & Numeric Inputs
@@ -381,6 +406,10 @@ $btnShowCmd.FlatStyle = "Flat"
 $form.Controls.Add($btnShowCmd)
 
 $btnShowCmd.add_Click({
+    if (-not $cmbVm.SelectedItem -or -not $script:currentDecision.IsValid) {
+        [System.Windows.Forms.MessageBox]::Show("Please select a valid VM first.", "Error", 0, 16)
+        return
+    }
     $cmdSpec = Build-QemuCommand -Decision $script:currentDecision
     [System.Windows.Forms.MessageBox]::Show(
         $cmdSpec.CommandLine,
@@ -401,10 +430,36 @@ $btnLaunch.FlatStyle = "Flat"
 $form.Controls.Add($btnLaunch)
 
 $btnLaunch.add_Click({
+    if (-not $cmbVm.SelectedItem -or -not $script:currentDecision.IsValid) {
+        [System.Windows.Forms.MessageBox]::Show("Please select a valid VM first.", "Error", 0, 16)
+        return
+    }
     $cmdSpec = Build-QemuCommand -Decision $script:currentDecision
-    $form.Hide()
+    
+    $btnLaunch.Enabled = $false
+    $btnLaunch.Text = "Running..."
+    $lblStatus.Text = "Status: VM is currently running in background..."
+    
+    $pbRun = New-Object System.Windows.Forms.ProgressBar
+    $pbRun.Location = New-Object System.Drawing.Point(20, 560)
+    $pbRun.Size = New-Object System.Drawing.Size(564, 15)
+    $pbRun.Style = "Continuous"
+    $form.Controls.Add($pbRun)
+
     try {
-        $process = Start-Process -FilePath $cmdSpec.Executable -ArgumentList $cmdSpec.Arguments -Wait -PassThru -NoNewWindow
+        $process = Start-Process -FilePath $cmdSpec.Executable -ArgumentList $cmdSpec.Arguments -PassThru -NoNewWindow
+        
+        $val = 0
+        $dir = 2
+        while (-not $process.HasExited) {
+            $val += $dir
+            if ($val -ge 100) { $val = 100; $dir = -2 }
+            if ($val -le 0) { $val = 0; $dir = 2 }
+            $pbRun.Value = $val
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 20
+        }
+
         [System.Windows.Forms.MessageBox]::Show(
             "Virtual Machine session ended (Exit Code: $($process.ExitCode)).",
             "Portable VM Session Ended",
@@ -419,7 +474,11 @@ $btnLaunch.add_Click({
             [System.Windows.Forms.MessageBoxIcon]::Error
         )
     }
-    $form.Close()
+    
+    $form.Controls.Remove($pbRun)
+    $btnLaunch.Enabled = $true
+    $btnLaunch.Text = "Launch VM"
+    Update-Diagnostics
 })
 
 # Show Form

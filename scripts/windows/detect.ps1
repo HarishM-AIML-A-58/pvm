@@ -30,8 +30,10 @@ function Get-HostInformation {
     }
 
     try {
-        # 1. OS Details
-        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue
+        # 1. OS Details — use WMI with CIM fallback for all Win10 versions
+        $os = $null
+        try { $os = Get-WmiObject Win32_OperatingSystem -ErrorAction SilentlyContinue } catch {}
+        if (-not $os) { try { $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue } catch {} }
         if ($os) {
             $hostInfo.OSName = $os.Caption
             $hostInfo.OSVersion = $os.Version
@@ -39,8 +41,10 @@ function Get-HostInformation {
             $hostInfo.AvailableRamMB = [math]::Round($os.FreePhysicalMemory / 1024)
         }
 
-        # 2. Processor Details
-        $cpuList = Get-CimInstance -ClassName Win32_Processor -ErrorAction SilentlyContinue
+        # 2. Processor Details — WMI with CIM fallback
+        $cpuList = $null
+        try { $cpuList = Get-WmiObject Win32_Processor -ErrorAction SilentlyContinue } catch {}
+        if (-not $cpuList) { try { $cpuList = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue } catch {} }
         if ($cpuList) {
             $primaryCpu = $cpuList | Select-Object -First 1
             $hostInfo.CPUName = ($primaryCpu.Name -replace '\s+', ' ').Trim()
@@ -57,23 +61,48 @@ function Get-HostInformation {
         }
 
         # 3. Hypervisor / WHPX Detection
-        # Check systeminfo or ComputerSystem hypervisor flag
-        $compSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue
+        $compSystem = $null
+        try { $compSystem = Get-WmiObject Win32_ComputerSystem -ErrorAction SilentlyContinue } catch {}
+        if (-not $compSystem) { try { $compSystem = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue } catch {} }
         if ($compSystem -and ($compSystem.HypervisorPresent -eq $true)) {
             $hostInfo.HypervisorPresent = $true
         }
 
-        # 4. Check QEMU binary location
-        $bundledQemu = Join-Path $RootDir "backends\windows\qemu\qemu-system-x86_64.exe"
+        # 4. Resolve architecture-aware QEMU binary name
+        #    Priority: config.json arch -> $env:PROCESSOR_ARCHITECTURE mapping
+        $configArch = "x86_64"
+        $configFile = Join-Path $RootDir "config.json"
+        if (Test-Path $configFile) {
+            try {
+                $cfg = Get-Content $configFile -Raw | ConvertFrom-Json
+                if ($cfg.vm_defaults.arch) { $configArch = $cfg.vm_defaults.arch }
+            } catch {}
+        }
+        # Override from detected host arch if config says x86_64 but we're on ARM
+        $rawHostArch = $env:PROCESSOR_ARCHITECTURE
+        if ($rawHostArch -eq "ARM64" -and $configArch -eq "x86_64") {
+            $configArch = "aarch64"   # prefer native
+        }
+        $qemuBinaryName = "qemu-system-$configArch.exe"
+
+        # 5. Check QEMU binary location (arch-aware)
+        $bundledQemu = Join-Path $RootDir "backends\windows\qemu\$qemuBinaryName"
         $qemuExe = ""
 
         if (Test-Path $bundledQemu) {
             $qemuExe = (Resolve-Path $bundledQemu).Path
         } else {
-            $pathCmd = Get-Command "qemu-system-x86_64.exe" -ErrorAction SilentlyContinue
-            if ($pathCmd) {
-                $qemuExe = $pathCmd.Source
+            # Scan backends folder for any matching arch binary
+            $qemuDir = Join-Path $RootDir "backends\windows\qemu"
+            if (Test-Path $qemuDir) {
+                $found = Get-ChildItem -Path $qemuDir -Filter $qemuBinaryName -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($found) { $qemuExe = $found.FullName }
             }
+        }
+        # Final fallback: PATH
+        if (-not $qemuExe) {
+            $pathCmd = Get-Command $qemuBinaryName -ErrorAction SilentlyContinue
+            if ($pathCmd) { $qemuExe = $pathCmd.Source }
         }
 
         if ($qemuExe -and (Test-Path $qemuExe)) {

@@ -1,4 +1,5 @@
 {
+  "version": "0.1-beta",
   "vm_defaults": {
     "memory_percent": 50,
     "memory_min_mb": 2048,
