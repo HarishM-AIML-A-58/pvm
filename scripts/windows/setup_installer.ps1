@@ -801,15 +801,9 @@ function Show-Step5 {
     $chkLin_arm64.Size = New-Object System.Drawing.Size(250, 20)
     $contentPanel.Controls.Add($chkLin_arm64)
 
-    $chkMac_x64 = New-Object System.Windows.Forms.CheckBox
-    $chkMac_x64.Text = "macOS Engine (Intel x86_64)"
-    $chkMac_x64.Location = New-Object System.Drawing.Point(300, 160)
-    $chkMac_x64.Size = New-Object System.Drawing.Size(250, 20)
-    $contentPanel.Controls.Add($chkMac_x64)
-
     $chkMac_arm64 = New-Object System.Windows.Forms.CheckBox
     $chkMac_arm64.Text = "macOS Engine (Apple Silicon)"
-    $chkMac_arm64.Location = New-Object System.Drawing.Point(300, 185)
+    $chkMac_arm64.Location = New-Object System.Drawing.Point(300, 160)
     $chkMac_arm64.Size = New-Object System.Drawing.Size(250, 20)
     $contentPanel.Controls.Add($chkMac_arm64)
 
@@ -848,7 +842,6 @@ function Show-Step5 {
         if ($chkWin_x64.Checked)   { $engines += @{ Name="Windows x86_64"; Zip="qemu-windows-x86_64.zip"; Dir="backends\windows\qemu" } }
         if ($chkLin_x64.Checked)   { $engines += @{ Name="Linux x86_64";   Zip="qemu-linux-x86_64.zip";   Dir="backends\linux\qemu" } }
         if ($chkLin_arm64.Checked) { $engines += @{ Name="Linux ARM64";    Zip="qemu-linux-arm64.zip";    Dir="backends\linux\qemu" } }
-        if ($chkMac_x64.Checked)   { $engines += @{ Name="macOS x86_64";   Zip="qemu-macos-x86_64.zip";   Dir="backends\macos\qemu" } }
         if ($chkMac_arm64.Checked) { $engines += @{ Name="macOS ARM64";    Zip="qemu-macos-arm64.zip";    Dir="backends\macos\qemu" } }
 
         if ($engines.Count -eq 0) {

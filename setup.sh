@@ -156,12 +156,10 @@ main() {
     prompt_yes_no "  Install Windows Engine (x86_64)?"       "$default_win"     && DO_WIN_X64=true
     prompt_yes_no "  Install Linux Engine   (x86_64)?"       "$default_lin_x64" && DO_LIN_X64=true
     prompt_yes_no "  Install Linux Engine   (ARM64)?"        "$default_lin_arm" && DO_LIN_ARM64=true
-    prompt_yes_no "  Install macOS Engine   (Intel x86_64)?" "$default_mac_x64" && DO_MAC_X64=true
     prompt_yes_no "  Install macOS Engine   (Apple Silicon)?" "$default_mac_arm" && DO_MAC_ARM64=true
     echo ""
 
-    # Check at least one selected
-    if ! $DO_WIN_X64 && ! $DO_LIN_X64 && ! $DO_LIN_ARM64 && ! $DO_MAC_X64 && ! $DO_MAC_ARM64; then
+    if ! $DO_WIN_X64 && ! $DO_LIN_X64 && ! $DO_LIN_ARM64 && ! $DO_MAC_ARM64; then
         echo -e "${RED}[!] No engines selected. Nothing to install. Exiting.${RESET}"
         exit 1
     fi
@@ -175,7 +173,6 @@ main() {
     $DO_WIN_X64   && echo -e "    ${GREEN}✓${RESET} Windows x86_64"
     $DO_LIN_X64   && echo -e "    ${GREEN}✓${RESET} Linux x86_64"
     $DO_LIN_ARM64 && echo -e "    ${GREEN}✓${RESET} Linux ARM64"
-    $DO_MAC_X64   && echo -e "    ${GREEN}✓${RESET} macOS Intel (x86_64)"
     $DO_MAC_ARM64 && echo -e "    ${GREEN}✓${RESET} macOS Apple Silicon (ARM64)"
     echo ""
 
@@ -199,9 +196,6 @@ main() {
     fi
     if $DO_LIN_ARM64; then
         download_and_extract "qemu-linux-arm64.zip" "${SCRIPT_DIR}/backends/linux/qemu" "$BASE_URL" || failed=1
-    fi
-    if $DO_MAC_X64; then
-        download_and_extract "qemu-macos-x86_64.zip" "${SCRIPT_DIR}/backends/macos/qemu" "$BASE_URL" || failed=1
     fi
     if $DO_MAC_ARM64; then
         download_and_extract "qemu-macos-arm64.zip" "${SCRIPT_DIR}/backends/macos/qemu" "$BASE_URL" || failed=1
