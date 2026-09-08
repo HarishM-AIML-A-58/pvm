@@ -1,23 +1,98 @@
 #!/usr/bin/env bash
-# Native Graphical Launcher for Linux and macOS
+# gui_launcher.sh - Native graphical front-end for Linux (zenity) and
+# macOS (osascript), falling back to the terminal launcher when neither is
+# usable.
+#
+# The dialogs are only a front-end: detection, decision and command assembly
+# all come from the same modules the terminal launcher uses, so the two paths
+# cannot drift apart.
+
+set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/detect.sh"
 source "$SCRIPT_DIR/decide.sh"
 source "$SCRIPT_DIR/build_command.sh"
-source "$SCRIPT_DIR/display.sh"
+source "$SCRIPT_DIR/lock.sh"
+source "$SCRIPT_DIR/setup_core.sh"
 
 detect_host_info "$ROOT_DIR"
 
 VMS_DIR="$ROOT_DIR/vms"
+DECISION_ISO=""
+
+source "$SCRIPT_DIR/gui_dialogs.sh"
+if [ -z "$GUI" ]; then
+    # No dialog toolkit: the terminal launcher is a complete front-end, so
+    # hand over to it rather than failing.
+    exec "$SCRIPT_DIR/launcher.sh" "$@"
+fi
+
+# ---- Launch --------------------------------------------------------------
+# Runs QEMU with the argv array. FULL_COMMAND_STR is never executed - it is a
+# display string, and eval'ing it would re-split any path containing a space.
+launch_vm() {
+    local vm_dir="$1"
+
+    if ! pvm_lock_guard "$vm_dir"; then
+        gui_error "This VM is already running (locked by $PVM_LOCK_OWNER).\n\nTwo QEMU processes sharing one disk image will corrupt it."
+        return 1
+    fi
+
+    build_qemu_command
+    "$QEMU_PATH" "${QEMU_ARGS[@]}"
+    local rc=$?
+    pvm_lock_release
+    return $rc
+}
+
+# Renders the decision as a short confirmation body, including anything the
+# engine had to downgrade, so surprises show up before launch rather than after.
+decision_summary_text() {
+    local text
+    text="RAM: ${DECISION_RAM_MB} MB
+Cores: ${DECISION_CORES}
+Guest: ${DECISION_ARCH} (${DECISION_MACHINE})
+Acceleration: ${DECISION_ACCEL}
+Display: ${DECISION_DISPLAY}
+UEFI: ${DECISION_UEFI}"
+    if [ -n "$DECISION_ACCEL_WARN" ]; then
+        text="$text
+
+Note: $DECISION_ACCEL_WARN"
+    fi
+    if [ "${#DECISION_WARNINGS[@]}" -gt 0 ]; then
+        local w
+        for w in "${DECISION_WARNINGS[@]}"; do
+            text="$text
+Note: $w"
+        done
+    fi
+    printf '%s' "$text"
+}
+
+decision_errors_text() {
+    local text="" e
+    if [ "${#DECISION_ERRORS[@]}" -gt 0 ]; then
+        for e in "${DECISION_ERRORS[@]}"; do
+            text="$text
+- $e"
+        done
+    fi
+    printf '%s' "$text"
+}
+
+# ---- Main flow -----------------------------------------------------------
+detect_host_info "$ROOT_DIR"
+
 VM_LIST=()
 if [ -d "$VMS_DIR" ]; then
     for d in "$VMS_DIR"/*; do
-        if [ -d "$d" ]; then
-            VM_LIST+=($(basename "$d"))
-        fi
+        [ -d "$d" ] || continue
+        VM_LIST[${#VM_LIST[@]}]="$(basename "$d")"
     done
 fi
 
@@ -88,14 +163,13 @@ if command -v zenity &>/dev/null; then
         exit $?
     fi
 
-    if [ "$SELECTED_VM" = "[- Delete VM]" ]; then
-        DEL_TARGET=$(zenity --list --title="Delete VM" \
-            --column="Virtual Machines" "${VM_LIST[@]}" \
-            --text="Select the VM you want to delete:")
-        [ -z "$DEL_TARGET" ] && exit 0
-        
-        "$SCRIPT_DIR/delete_wizard.sh" "$DEL_TARGET" "$VMS_DIR"
-        exit 0
+    SETUP_ISO_PATH="$(gui_pick_iso)" || exit 0
+    [ -n "$SETUP_ISO_PATH" ] || exit 0
+
+    VAL_ISO="$(test_iso_file_valid "$SETUP_ISO_PATH")"
+    if [ "${VAL_ISO%%|*}" = "false" ]; then
+        gui_error "$(printf '%s' "$VAL_ISO" | cut -d'|' -f2)"
+        exit 1
     fi
 
     VM_DIR="$VMS_DIR/$SELECTED_VM"
@@ -204,3 +278,17 @@ else
     # Fallback to Terminal Interactive Launcher
     exec "$SCRIPT_DIR/launcher.sh"
 fi
+
+run_decision_engine "$ROOT_DIR" "$VM_DIR"
+
+if [ "$DECISION_IS_VALID" -ne 1 ]; then
+    gui_error "Cannot launch '$SELECTED_VM':$(decision_errors_text)"
+    exit 1
+fi
+
+gui_confirm "Launch '$SELECTED_VM'?
+
+$(decision_summary_text)" || exit 0
+
+launch_vm "$VM_DIR"
+exit $?

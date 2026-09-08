@@ -1,3 +1,29 @@
+
+# VM instances: keep the directory layout, never the images or runtime state
+vms/*/
+!vms/README.md
+*.qcow2
+*.raw
+*.img
+*.iso
+*.lock
+*_VARS.fd
+uefi_vars.fd
+
+# Single-instance guard, created next to a running VM's disk image
+.pvm-lock/
+
+# Bundled QEMU backends (downloaded per-host, never committed)
+backends/*/qemu/
+
+# Installer / launcher runtime artifacts
+_install_manifest.json
+.cache/
+*.log
+*.tmp
+
+
+# large dara folders
 vms/omarchy/*
 backends/windows/qemu/*
 
@@ -11,13 +37,7 @@ Desktop.ini
 
 # IDE & Editor files
 .vscode/
+.kiro/
 .idea/
 *.swp
 *.swo
-
-# Logs and temporary files
-*.log
-*.tmp
-
-# Large installer ISOs
-*.iso
