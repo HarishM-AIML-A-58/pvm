@@ -26,9 +26,12 @@ jobs:
       - name: Download QEMU for Windows
         shell: pwsh
         run: |
-          $version = "${{ github.event.inputs.qemu_version }}"
-          $url = "https://qemu.weilnetz.de/w64/qemu-w64-setup-$version.exe"
-          Write-Host "Downloading QEMU $version from $url"
+          Write-Host "Fetching latest QEMU Windows release from Weilnetz..."
+          $html = Invoke-WebRequest -Uri "https://qemu.weilnetz.de/w64/" -UseBasicParsing
+          $latestExe = $html.Links | Where-Object href -match "qemu-w64-setup-.*\.exe" | Select-Object -ExpandProperty href | Sort-Object | Select-Object -Last 1
+          if (-not $latestExe) { Write-Error "Could not find .exe file on Weilnetz page"; exit 1 }
+          $url = "https://qemu.weilnetz.de/w64/$latestExe"
+          Write-Host "Downloading $latestExe from $url"
           Invoke-WebRequest -Uri $url -OutFile "qemu-setup.exe" -UseBasicParsing
 
       - name: Extract QEMU (silent install to temp folder)
