@@ -770,44 +770,38 @@ function Show-Step5 {
         $y += 16
     }
 
-    $lblManualDesc = New-Object System.Windows.Forms.Label
-    $lblManualDesc.Text = "Browse to the QEMU installer (.exe) or archive (.zip) you downloaded."
-    $lblManualDesc.Font = $fntBody
-    $lblManualDesc.Location = New-Object System.Drawing.Point(25, 135)
-    $lblManualDesc.Size = New-Object System.Drawing.Size(580, 20)
-    $contentPanel.Controls.Add($lblManualDesc)
+    $chkWindows = New-Object System.Windows.Forms.CheckBox
+    $chkWindows.Text = "Install Windows Engine (x86_64)"
+    $chkWindows.Location = New-Object System.Drawing.Point(25, 135)
+    $chkWindows.Size = New-Object System.Drawing.Size(300, 20)
+    $chkWindows.Checked = $true
+    $contentPanel.Controls.Add($chkWindows)
 
-    $lblOpenPage = New-Object System.Windows.Forms.Label
-    $lblOpenPage.Text = "Need to download first?"
-    $lblOpenPage.Font = $fntBody
-    $lblOpenPage.Location = New-Object System.Drawing.Point(25, 160)
-    $lblOpenPage.AutoSize = $true
-    $contentPanel.Controls.Add($lblOpenPage)
+    $chkMacos = New-Object System.Windows.Forms.CheckBox
+    $chkMacos.Text = "Install macOS Engine (Universal)"
+    $chkMacos.Location = New-Object System.Drawing.Point(25, 160)
+    $chkMacos.Size = New-Object System.Drawing.Size(300, 20)
+    $contentPanel.Controls.Add($chkMacos)
 
-    $linkPage = New-Object System.Windows.Forms.LinkLabel
-    $linkPage.Text = "Open QEMU download page"
-    $linkPage.Font = $fntBody
-    $linkPage.Location = New-Object System.Drawing.Point(165, 160)
-    $linkPage.AutoSize = $true
-    $contentPanel.Controls.Add($linkPage)
-    $linkPage.add_LinkClicked({ Start-Process $qemuDownloadUrl }.GetNewClosure())
+    $chkLinux = New-Object System.Windows.Forms.CheckBox
+    $chkLinux.Text = "Install Linux Engine (x86_64)"
+    $chkLinux.Location = New-Object System.Drawing.Point(25, 185)
+    $chkLinux.Size = New-Object System.Drawing.Size(300, 20)
+    $contentPanel.Controls.Add($chkLinux)
 
-    $btnBrowseQemu = New-Object System.Windows.Forms.Button
-    $btnBrowseQemu.Text = "Browse for QEMU file..."
-    $btnBrowseQemu.Location = New-Object System.Drawing.Point(25, 195)
-    $btnBrowseQemu.Size = New-Object System.Drawing.Size(200, 28)
-    $btnBrowseQemu.FlatStyle = "Flat"
-    $contentPanel.Controls.Add($btnBrowseQemu)
-
-    $lblQemuFile = New-Object System.Windows.Forms.Label
-    $lblQemuFile.Font = $fntMono
-    $lblQemuFile.Location = New-Object System.Drawing.Point(25, 235)
-    $lblQemuFile.Size = New-Object System.Drawing.Size(580, 18)
-    $contentPanel.Controls.Add($lblQemuFile)
+    $btnDownload = New-Object System.Windows.Forms.Button
+    $btnDownload.Text = "Download & Extract Engines"
+    $btnDownload.Location = New-Object System.Drawing.Point(25, 215)
+    $btnDownload.Size = New-Object System.Drawing.Size(250, 32)
+    $btnDownload.BackColor = [System.Drawing.Color]::FromArgb(16, 185, 129)
+    $btnDownload.ForeColor = [System.Drawing.Color]::White
+    $btnDownload.FlatStyle = "Flat"
+    $contentPanel.Controls.Add($btnDownload)
 
     $pbQemuExtract = New-Object System.Windows.Forms.ProgressBar
     $pbQemuExtract.Location = New-Object System.Drawing.Point(25, 255)
     $pbQemuExtract.Size = New-Object System.Drawing.Size(580, 18)
+    $pbQemuExtract.Style = "Blocks"
     $pbQemuExtract.Visible = $false
     $contentPanel.Controls.Add($pbQemuExtract)
 
@@ -817,95 +811,85 @@ function Show-Step5 {
     $lblQemuStatus.Size = New-Object System.Drawing.Size(580, 40)
     $contentPanel.Controls.Add($lblQemuStatus)
 
-    $qemuDestDir = Join-Path $state.InstallPath $QEMU_DIR_RELATIVE
+    $btnDownload.add_Click({
+        $btnDownload.Enabled = $false
+        $btnBack.Enabled = $false
+        $pbQemuExtract.Visible = $true
+        $pbQemuExtract.Value = 0
+        
+        $repoUrl = "https://github.com/aether70/pvm/releases/download/v0.1-beta"
+        
+        $engines = @()
+        if ($chkWindows.Checked) { $engines += @{ Name="Windows"; Zip="qemu-windows.zip"; Dir="backends\windows\qemu" } }
+        if ($chkMacos.Checked)   { $engines += @{ Name="macOS";   Zip="qemu-macos.zip";   Dir="backends\macos\qemu" } }
+        if ($chkLinux.Checked)   { $engines += @{ Name="Linux";   Zip="qemu-linux.zip";   Dir="backends\linux\qemu" } }
 
-    $btnBrowseQemu.add_Click({
-        $dlg = New-Object System.Windows.Forms.OpenFileDialog
-        $dlg.Title = "Select QEMU Installer or Archive"
-        $dlg.Filter = "QEMU Files (*.exe;*.zip)|*.exe;*.zip|All Files (*.*)|*.*"
-        if ($dlg.ShowDialog() -eq "OK") {
-            $selectedFile = $dlg.FileName
-            $lblQemuFile.Text = $selectedFile
-            $ext = [System.IO.Path]::GetExtension($selectedFile).ToLower()
+        if ($engines.Count -eq 0) {
+            $lblQemuStatus.Text = "[!] Please select at least one engine."
+            $lblQemuStatus.ForeColor = $colRed
+            $btnDownload.Enabled = $true
+            $btnBack.Enabled = $true
+            return
+        }
 
-            if ($ext -eq ".zip") {
-                # Extract zip
-                $pbQemuExtract.Visible = $true
-                $pbQemuExtract.Style = "Continuous"
-                $lblQemuStatus.Text = "Extracting ZIP to $qemuDestDir ... (Please wait)"
+        # Ensure .NET compression assembly is loaded
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+        try {
+            foreach ($engine in $engines) {
+                $lblQemuStatus.Text = "Downloading $($engine.Name) engine..."
+                $lblQemuStatus.ForeColor = $colDarkText
                 [System.Windows.Forms.Application]::DoEvents()
-                try {
-                    # Run extraction in a separate PowerShell process to avoid freezing the UI thread
-                    $proc = Start-Process powershell.exe -ArgumentList "-WindowStyle Hidden -Command `"Expand-Archive -Path '$selectedFile' -DestinationPath '$qemuDestDir' -Force`"" -PassThru
-                    $val = 0
-                    $dir = 2
-                    while (-not $proc.HasExited) {
-                        $val += $dir
-                        if ($val -ge 100) { $val = 100; $dir = -2 }
-                        if ($val -le 0) { $val = 0; $dir = 2 }
-                        $pbQemuExtract.Value = $val
-                        [System.Windows.Forms.Application]::DoEvents()
-                        Start-Sleep -Milliseconds 20
-                    }
-                    $pbQemuExtract.Visible = $false
-                    if ($proc.ExitCode -eq 0) {
-                        $lblQemuStatus.Text = "[OK] Extracted successfully."
-                        $lblQemuStatus.ForeColor = $colGreen
-                        # Validate
-                        $bin = Get-ChildItem -Path $qemuDestDir -Recurse -Filter $qemuBinaryName -ErrorAction SilentlyContinue | Select-Object -First 1
-                        if ($bin) {
-                            $state.QemuInstalled = $true
-                            $btnNext.Enabled = $true
-                            $lblQemuStatus.Text = "[OK] Found: $($bin.FullName)"
-                        } else {
-                            $lblQemuStatus.Text = "[!] '$qemuBinaryName' not found in ZIP. Please verify you downloaded the correct architecture."
-                            $lblQemuStatus.ForeColor = $colRed
-                        }
-                    } else {
-                        $lblQemuStatus.Text = "[!] Extraction failed with exit code $($proc.ExitCode)."
-                        $lblQemuStatus.ForeColor = $colRed
-                    }
-                } catch {
-                    $pbQemuExtract.Visible = $false
-                    $lblQemuStatus.Text = "[!] Extraction error: $_"
-                    $lblQemuStatus.ForeColor = $colRed
-                }
-
-            } elseif ($ext -eq ".exe") {
-                # Run NSIS installer silently
-                $pbQemuExtract.Visible = $true
-                $pbQemuExtract.Style = "Continuous"
-                $lblQemuStatus.Text = "Running QEMU installer silently...`nInstalling to: $qemuDestDir"
+                
+                $url = "$repoUrl/$($engine.Zip)"
+                $tempZip = Join-Path $env:TEMP $engine.Zip
+                
+                # Download
+                Invoke-WebRequest -Uri $url -OutFile $tempZip -UseBasicParsing
+                
+                $destDir = Join-Path $state.InstallPath $engine.Dir
+                if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+                
+                $lblQemuStatus.Text = "Extracting $($engine.Name) engine... (High-Speed .NET)"
                 [System.Windows.Forms.Application]::DoEvents()
-                try {
-                    $proc = Start-Process -FilePath $selectedFile -ArgumentList "/S /D=$qemuDestDir" -PassThru
-                    $val = 0
-                    $dir = 2
-                    while (-not $proc.HasExited) {
-                        $val += $dir
-                        if ($val -ge 100) { $val = 100; $dir = -2 }
-                        if ($val -le 0) { $val = 0; $dir = 2 }
-                        $pbQemuExtract.Value = $val
-                        [System.Windows.Forms.Application]::DoEvents()
-                        Start-Sleep -Milliseconds 20
-                    }
-                    $pbQemuExtract.Visible = $false
-                    $bin = Get-ChildItem -Path $qemuDestDir -Recurse -Filter $qemuBinaryName -ErrorAction SilentlyContinue | Select-Object -First 1
-                    if ($bin) {
-                        $state.QemuInstalled = $true
-                        $btnNext.Enabled = $true
-                        $lblQemuStatus.Text = "[OK] QEMU installed: $($bin.FullName)"
-                        $lblQemuStatus.ForeColor = $colGreen
+                
+                # Native fast extraction with progress
+                $zip = [System.IO.Compression.ZipFile]::OpenRead($tempZip)
+                $total = $zip.Entries.Count
+                $count = 0
+                
+                foreach ($entry in $zip.Entries) {
+                    $entryPath = Join-Path $destDir $entry.FullName
+                    if ($entry.FullName.EndsWith("/") -or $entry.FullName.EndsWith("\")) {
+                        if (-not (Test-Path $entryPath)) { New-Item -ItemType Directory -Path $entryPath -Force | Out-Null }
                     } else {
-                        $lblQemuStatus.Text = "[!] '$qemuBinaryName' not found after install.`nThe installer may have run in interactive mode.`nTry a .zip download instead."
-                        $lblQemuStatus.ForeColor = $colOrange
+                        $parent = Split-Path $entryPath
+                        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+                        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $entryPath, $true)
                     }
-                } catch {
-                    $pbQemuExtract.Visible = $false
-                    $lblQemuStatus.Text = "[!] Installer failed: $_"
-                    $lblQemuStatus.ForeColor = $colRed
+                    $count++
+                    $percent = [math]::Floor(($count / $total) * 100)
+                    if ($percent -ne $pbQemuExtract.Value) {
+                        $pbQemuExtract.Value = $percent
+                        [System.Windows.Forms.Application]::DoEvents()
+                    }
                 }
+                $zip.Dispose()
+                Remove-Item $tempZip -Force
             }
+            
+            $state.QemuInstalled = $true
+            $btnNext.Enabled = $true
+            $btnBack.Enabled = $true
+            $lblQemuStatus.Text = "[OK] All selected engines successfully installed!"
+            $lblQemuStatus.ForeColor = $colGreen
+            $btnDownload.Text = "Installed"
+            
+        } catch {
+            $lblQemuStatus.Text = "[!] Error: $($_.Exception.Message)`nEnsure you have uploaded the .zip files to your GitHub Releases!"
+            $lblQemuStatus.ForeColor = $colRed
+            $btnDownload.Enabled = $true
+            $btnBack.Enabled = $true
         }
     }.GetNewClosure())
 }
