@@ -1,4 +1,5 @@
 <div align="center">
+  <img src="logo/portable_vm_logo.png" alt="PortableVM Logo" width="200" />
   <h1>🚀 PortableVM (v0.1-beta)</h1>
   <p><strong>Your entire operating system in your pocket. Plug it in. Run it anywhere.</strong></p>
 </div>
@@ -20,19 +21,20 @@ Instead of carrying a laptop, just carry your portable SSD. Plug it into **any**
 
 ## 📥 Installation & Setup
 
-We have packaged the entire PortableVM setup into a single, dead-simple installer file.
+While we await code-signing approval for our executable, PortableVM is distributed as a secure `.zip` archive. Please follow these exact steps to ensure Windows Smart App Control does not block the setup.
 
-### Step 1: Download the Installer
-Go to the **Releases** page of this repository and download the latest **`PortableVM_Setup.bat`**.
+### Step 1: Download & Unblock (CRITICAL)
+1. Go to the **Releases** page and download the latest **`PortableVM.zip`** file.
+2. **Before extracting**, right-click the downloaded `.zip` file and select **Properties**.
+3. At the bottom of the General tab, check the **Unblock** box and click Apply. *(This bypasses Smart App Control).*
 
-### Step 2: Run the Installer (Windows)
-1. Plug in your external USB Drive or SSD.
-2. Double-click the downloaded **`PortableVM_Setup.bat`** file.
-3. The interactive GUI wizard will appear. 
-4. The wizard will automatically detect your plugged-in USB drive, ensure it has enough free space, and prompt you to choose an installation folder.
-5. It will securely download QEMU (the underlying virtualization engine) and extract all necessary PortableVM files directly to your USB drive.
+### Step 2: Extract & Run
+1. Extract the contents of the unblocked `.zip` file to a folder on your computer.
+2. Plug in your external USB Drive or SSD.
+3. Open the extracted folder and double-click **`setup.bat`**.
+4. The interactive GUI wizard will securely download QEMU (the underlying virtualization engine) and transfer all necessary PortableVM files directly to your USB drive.
 
-> **Note on Upgrading:** If you already have a version of PortableVM installed, simply run the new `.bat` file and point it to your existing directory. The installer will safely upgrade the internal scripts while preserving your VMs and configurations!
+> **Note on Upgrading:** If you already have a version of PortableVM installed, simply run the new `setup.bat` and point it to your existing directory. The installer will safely upgrade the internal scripts while preserving your VMs and configurations!
 
 ---
 

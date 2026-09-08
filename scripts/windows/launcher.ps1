@@ -216,11 +216,12 @@ Write-Host ""
 
 # 7. Execute QEMU process
 try {
-    $process = Start-Process -FilePath $cmdSpec.Executable -ArgumentList $cmdSpec.Arguments -Wait -PassThru -NoNewWindow
+    # Start QEMU and redirect stderr to $null to suppress harmless warnings (like xsave state)
+    $process = Start-Process -FilePath $cmdSpec.Executable -ArgumentList $cmdSpec.Arguments -PassThru -NoNewWindow -RedirectStandardError "$env:TEMP\qemu_err.log"
+    $process.WaitForExit()
     Write-Host "  [+] Virtual Machine session terminated with exit code $($process.ExitCode)." -ForegroundColor Cyan
     exit $process.ExitCode
 } catch {
     Write-Host "  [X] Failed to launch QEMU: $_" -ForegroundColor Red
     exit 1
 }
-

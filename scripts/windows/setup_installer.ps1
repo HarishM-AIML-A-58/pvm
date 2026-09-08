@@ -173,6 +173,11 @@ $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox  = $false
 $form.BackColor    = [System.Drawing.Color]::FromArgb(245, 247, 250)
 
+$iconPath = Join-Path $SourceRoot "logo\portable_vm_logo.ico"
+if (Test-Path $iconPath) {
+    try { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($iconPath) } catch {}
+}
+
 # Fonts
 $fntTitle   = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
 $fntHeader  = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)

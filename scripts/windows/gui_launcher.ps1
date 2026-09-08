@@ -78,6 +78,11 @@ $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 $form.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
 
+$iconPath = Join-Path $PSScriptRoot "..\..\logo\portable_vm_logo.ico"
+if (Test-Path $iconPath) {
+    try { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($iconPath) } catch {}
+}
+
 # Colors & Fonts
 $fontHeader = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
 $fontSubHeader = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
@@ -437,6 +442,11 @@ $btnLaunch.add_Click({
     $cmdSpec = Build-QemuCommand -Decision $script:currentDecision
     
     $btnLaunch.Enabled = $false
+    $btnDeleteVm.Enabled = $false
+    $btnNewVm.Enabled = $false
+    $btnShowCmd.Enabled = $false
+    $cmbVm.Enabled = $false
+    
     $btnLaunch.Text = "Running..."
     $lblStatus.Text = "Status: VM is currently running in background..."
     
@@ -473,6 +483,15 @@ $btnLaunch.add_Click({
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Error
         )
+    } finally {
+        $btnLaunch.Enabled = $true
+        $btnDeleteVm.Enabled = $true
+        $btnNewVm.Enabled = $true
+        $btnShowCmd.Enabled = $true
+        $cmbVm.Enabled = $true
+        $btnLaunch.Text = "Launch VM"
+        $pbRun.Dispose()
+        Update-Diagnostics
     }
     
     $form.Controls.Remove($pbRun)
