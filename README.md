@@ -21,20 +21,35 @@ Instead of carrying a laptop, just carry your portable SSD. Plug it into **any**
 
 ## 📥 Installation & Setup
 
+PortableVM can be initialized from **any** operating system — Windows, Linux, or macOS.
+
+### Windows Setup
 While we await code-signing approval for our executable, PortableVM is distributed as a secure `.zip` archive. Please follow these exact steps to ensure Windows Smart App Control does not block the setup.
 
-### Step 1: Download & Unblock (CRITICAL)
+#### Step 1: Download & Unblock (CRITICAL)
 1. Go to the **Releases** page and download the latest **`PortableVM.zip`** file.
 2. **Before extracting**, right-click the downloaded `.zip` file and select **Properties**.
 3. At the bottom of the General tab, check the **Unblock** box and click Apply. *(This bypasses Smart App Control).*
 
-### Step 2: Extract & Run
+#### Step 2: Extract & Run
 1. Extract the contents of the unblocked `.zip` file to a folder on your computer.
 2. Plug in your external USB Drive or SSD.
 3. Open the extracted folder and double-click **`setup.bat`**.
-4. The interactive GUI wizard will securely download QEMU (the underlying virtualization engine) and transfer all necessary PortableVM files directly to your USB drive.
+4. The interactive GUI wizard will let you select which QEMU engines to download (Windows, Linux, macOS) and install them directly to your USB drive.
 
 > **Note on Upgrading:** If you already have a version of PortableVM installed, simply run the new `setup.bat` and point it to your existing directory. The installer will safely upgrade the internal scripts while preserving your VMs and configurations!
+
+### Linux & macOS Setup
+1. Download or clone this repository to your computer.
+2. Plug in your external USB Drive or SSD.
+3. Open a terminal in the project folder and run:
+   ```bash
+   chmod +x setup.sh
+   ./setup.sh
+   ```
+4. The interactive terminal wizard will ask which QEMU engines to download. It auto-detects your current platform and pre-selects the correct engine.
+5. Once complete, your USB drive is ready to use on any supported OS!
+
 
 ---
 

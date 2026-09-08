@@ -1,0 +1,348 @@
+name: Build QEMU Engines
+
+# ─────────────────────────────────────────────────────────
+# MANUAL TRIGGER ONLY - Nothing runs on push, PR, or tag.
+# Go to: GitHub Repo → Actions → "Build QEMU Engines" → Run workflow
+# ─────────────────────────────────────────────────────────
+on:
+  workflow_dispatch:
+    inputs:
+      qemu_version:
+        description: 'QEMU version to package (e.g. 9.2.0)'
+        required: true
+        default: '9.2.0'
+      release_tag:
+        description: 'Release tag name (e.g. qemu-v9.2.0)'
+        required: true
+        default: 'qemu-v9.2.0'
+
+jobs:
+  # ═══════════════════════════════════════════════════════
+  # JOB 1: Windows x86_64
+  # ═══════════════════════════════════════════════════════
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Download QEMU for Windows
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.qemu_version }}"
+          $url = "https://qemu.weilnetz.de/w64/qemu-w64-setup-$version.exe"
+          Write-Host "Downloading QEMU $version from $url"
+          Invoke-WebRequest -Uri $url -OutFile "qemu-setup.exe" -UseBasicParsing
+
+      - name: Extract QEMU (silent install to temp folder)
+        shell: pwsh
+        run: |
+          $dest = "$env:RUNNER_TEMP\qemu-extract"
+          Start-Process -FilePath ".\qemu-setup.exe" -ArgumentList "/S /D=$dest" -Wait
+          Write-Host "Installed to $dest"
+          Get-ChildItem $dest -Recurse | Measure-Object | Select-Object -ExpandProperty Count | ForEach-Object { Write-Host "Total files: $_" }
+
+      - name: Strip unnecessary emulators (keep only x86_64)
+        shell: pwsh
+        run: |
+          $dest = "$env:RUNNER_TEMP\qemu-extract"
+          # Keep only qemu-system-x86_64.exe and qemu-img.exe, remove other system emulators
+          Get-ChildItem "$dest" -Filter "qemu-system-*.exe" -Recurse | Where-Object { $_.Name -ne "qemu-system-x86_64.exe" } | Remove-Item -Force
+          Write-Host "Stripped unnecessary emulators"
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          $dest = "$env:RUNNER_TEMP\qemu-extract"
+          Compress-Archive -Path "$dest\*" -DestinationPath "qemu-windows-x86_64.zip" -Force
+          $size = (Get-Item "qemu-windows-x86_64.zip").Length / 1MB
+          Write-Host "Created qemu-windows-x86_64.zip ($([math]::Round($size, 2)) MB)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-windows-x86_64
+          path: qemu-windows-x86_64.zip
+
+  # ═══════════════════════════════════════════════════════
+  # JOB 2: Linux x86_64
+  # ═══════════════════════════════════════════════════════
+  build-linux-x86_64:
+    runs-on: ubuntu-22.04  # Use older Ubuntu for max glibc compatibility
+    steps:
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86
+
+      - name: Bundle binary + all shared libraries
+        run: |
+          mkdir -p bundle/libs
+
+          QEMU_BIN=$(which qemu-system-x86_64)
+          cp "$QEMU_BIN" bundle/
+
+          # Also grab qemu-img
+          QEMU_IMG=$(which qemu-img 2>/dev/null || true)
+          if [ -n "$QEMU_IMG" ]; then
+            cp "$QEMU_IMG" bundle/
+          fi
+
+          # Copy all shared library dependencies
+          ldd "$QEMU_BIN" | grep "=> /" | awk '{print $3}' | while read lib; do
+            cp "$lib" bundle/libs/
+          done
+
+          # Copy QEMU firmware/share data
+          if [ -d /usr/share/qemu ]; then
+            cp -r /usr/share/qemu bundle/share
+          fi
+
+          echo "Bundle contents:"
+          find bundle -type f | head -50
+          du -sh bundle/
+
+      - name: Create launcher wrapper
+        run: |
+          cat > bundle/run-qemu.sh << 'WRAPPER'
+          #!/bin/bash
+          # Portable QEMU launcher - sets library path to bundled libs
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export LD_LIBRARY_PATH="$DIR/libs:$LD_LIBRARY_PATH"
+          exec "$DIR/qemu-system-x86_64" "$@"
+          WRAPPER
+          chmod +x bundle/run-qemu.sh
+          chmod +x bundle/qemu-system-x86_64
+
+      - name: Create ZIP
+        run: |
+          cd bundle && zip -r ../qemu-linux-x86_64.zip . && cd ..
+          SIZE=$(du -h qemu-linux-x86_64.zip | cut -f1)
+          echo "Created qemu-linux-x86_64.zip ($SIZE)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-linux-x86_64
+          path: qemu-linux-x86_64.zip
+
+  # ═══════════════════════════════════════════════════════
+  # JOB 3: Linux ARM64
+  # ═══════════════════════════════════════════════════════
+  build-linux-arm64:
+    runs-on: ubuntu-22.04-arm  # GitHub ARM64 runner
+    steps:
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86
+
+      - name: Bundle binary + all shared libraries
+        run: |
+          mkdir -p bundle/libs
+
+          QEMU_BIN=$(which qemu-system-x86_64)
+          cp "$QEMU_BIN" bundle/
+
+          QEMU_IMG=$(which qemu-img 2>/dev/null || true)
+          if [ -n "$QEMU_IMG" ]; then
+            cp "$QEMU_IMG" bundle/
+          fi
+
+          ldd "$QEMU_BIN" | grep "=> /" | awk '{print $3}' | while read lib; do
+            cp "$lib" bundle/libs/
+          done
+
+          if [ -d /usr/share/qemu ]; then
+            cp -r /usr/share/qemu bundle/share
+          fi
+
+          du -sh bundle/
+
+      - name: Create launcher wrapper
+        run: |
+          cat > bundle/run-qemu.sh << 'WRAPPER'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export LD_LIBRARY_PATH="$DIR/libs:$LD_LIBRARY_PATH"
+          exec "$DIR/qemu-system-x86_64" "$@"
+          WRAPPER
+          chmod +x bundle/run-qemu.sh
+          chmod +x bundle/qemu-system-x86_64
+
+      - name: Create ZIP
+        run: |
+          cd bundle && zip -r ../qemu-linux-arm64.zip . && cd ..
+          SIZE=$(du -h qemu-linux-arm64.zip | cut -f1)
+          echo "Created qemu-linux-arm64.zip ($SIZE)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-linux-arm64
+          path: qemu-linux-arm64.zip
+
+  # ═══════════════════════════════════════════════════════
+  # JOB 4: macOS x86_64 (Intel Macs)
+  # ═══════════════════════════════════════════════════════
+  build-macos-x86_64:
+    runs-on: macos-13  # Intel-based runner
+    steps:
+      - name: Install QEMU via Homebrew
+        run: brew install qemu
+
+      - name: Bundle binary + all dylibs
+        run: |
+          mkdir -p bundle/libs
+
+          QEMU_BIN=$(which qemu-system-x86_64)
+          cp "$QEMU_BIN" bundle/
+
+          QEMU_IMG=$(which qemu-img 2>/dev/null || true)
+          if [ -n "$QEMU_IMG" ]; then
+            cp "$QEMU_IMG" bundle/
+          fi
+
+          # Trace and copy all dylib dependencies
+          otool -L "$QEMU_BIN" | grep -v "^/" | grep "/" | awk '{print $1}' | while read lib; do
+            if [ -f "$lib" ]; then
+              cp "$lib" bundle/libs/
+            fi
+          done
+
+          # Also copy Homebrew-specific dylibs
+          otool -L "$QEMU_BIN" | awk '{print $1}' | grep "/opt/homebrew\|/usr/local" | while read lib; do
+            if [ -f "$lib" ]; then
+              cp "$lib" bundle/libs/
+            fi
+          done
+
+          # Copy QEMU share data (firmware, keymaps, etc.)
+          QEMU_SHARE=$(brew --prefix qemu)/share/qemu
+          if [ -d "$QEMU_SHARE" ]; then
+            cp -r "$QEMU_SHARE" bundle/share
+          fi
+
+          du -sh bundle/
+
+      - name: Create launcher wrapper
+        run: |
+          cat > bundle/run-qemu.sh << 'WRAPPER'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export DYLD_LIBRARY_PATH="$DIR/libs:$DYLD_LIBRARY_PATH"
+          exec "$DIR/qemu-system-x86_64" "$@"
+          WRAPPER
+          chmod +x bundle/run-qemu.sh
+          chmod +x bundle/qemu-system-x86_64
+
+      - name: Create ZIP
+        run: |
+          cd bundle && zip -r ../qemu-macos-x86_64.zip . && cd ..
+          SIZE=$(du -h qemu-macos-x86_64.zip | cut -f1)
+          echo "Created qemu-macos-x86_64.zip ($SIZE)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-macos-x86_64
+          path: qemu-macos-x86_64.zip
+
+  # ═══════════════════════════════════════════════════════
+  # JOB 5: macOS ARM64 (Apple Silicon M1/M2/M3/M4)
+  # ═══════════════════════════════════════════════════════
+  build-macos-arm64:
+    runs-on: macos-14  # Apple Silicon runner
+    steps:
+      - name: Install QEMU via Homebrew
+        run: brew install qemu
+
+      - name: Bundle binary + all dylibs
+        run: |
+          mkdir -p bundle/libs
+
+          QEMU_BIN=$(which qemu-system-x86_64)
+          cp "$QEMU_BIN" bundle/
+
+          QEMU_IMG=$(which qemu-img 2>/dev/null || true)
+          if [ -n "$QEMU_IMG" ]; then
+            cp "$QEMU_IMG" bundle/
+          fi
+
+          otool -L "$QEMU_BIN" | awk '{print $1}' | grep "/opt/homebrew\|/usr/local" | while read lib; do
+            if [ -f "$lib" ]; then
+              cp "$lib" bundle/libs/
+            fi
+          done
+
+          QEMU_SHARE=$(brew --prefix qemu)/share/qemu
+          if [ -d "$QEMU_SHARE" ]; then
+            cp -r "$QEMU_SHARE" bundle/share
+          fi
+
+          du -sh bundle/
+
+      - name: Create launcher wrapper
+        run: |
+          cat > bundle/run-qemu.sh << 'WRAPPER'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export DYLD_LIBRARY_PATH="$DIR/libs:$DYLD_LIBRARY_PATH"
+          exec "$DIR/qemu-system-x86_64" "$@"
+          WRAPPER
+          chmod +x bundle/run-qemu.sh
+          chmod +x bundle/qemu-system-x86_64
+
+      - name: Create ZIP
+        run: |
+          cd bundle && zip -r ../qemu-macos-arm64.zip . && cd ..
+          SIZE=$(du -h qemu-macos-arm64.zip | cut -f1)
+          echo "Created qemu-macos-arm64.zip ($SIZE)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-macos-arm64
+          path: qemu-macos-arm64.zip
+
+  # ═══════════════════════════════════════════════════════
+  # JOB 6: Create GitHub Release with all ZIPs
+  # ═══════════════════════════════════════════════════════
+  release:
+    needs: [build-windows, build-linux-x86_64, build-linux-arm64, build-macos-x86_64, build-macos-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: List all files
+        run: find artifacts/ -type f
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: "QEMU Engines - ${{ github.event.inputs.release_tag }}"
+          body: |
+            ## QEMU Portable Engines (v${{ github.event.inputs.qemu_version }})
+
+            Pre-compiled, portable QEMU binaries for use with PortableVM.
+
+            | File | Platform | Architecture |
+            |------|----------|-------------|
+            | `qemu-windows-x86_64.zip` | Windows | x86_64 (AMD/Intel) |
+            | `qemu-linux-x86_64.zip` | Linux | x86_64 (AMD/Intel) |
+            | `qemu-linux-arm64.zip` | Linux | ARM64 (Raspberry Pi, etc.) |
+            | `qemu-macos-x86_64.zip` | macOS | x86_64 (Intel Macs) |
+            | `qemu-macos-arm64.zip` | macOS | ARM64 (Apple Silicon M1+) |
+
+            ### License (GPLv2)
+            The pre-compiled QEMU binaries provided here are unmodified.
+            The official source code can be found at: https://gitlab.com/qemu-project/qemu
+          files: |
+            artifacts/qemu-windows-x86_64/qemu-windows-x86_64.zip
+            artifacts/qemu-linux-x86_64/qemu-linux-x86_64.zip
+            artifacts/qemu-linux-arm64/qemu-linux-arm64.zip
+            artifacts/qemu-macos-x86_64/qemu-macos-x86_64.zip
+            artifacts/qemu-macos-arm64/qemu-macos-arm64.zip

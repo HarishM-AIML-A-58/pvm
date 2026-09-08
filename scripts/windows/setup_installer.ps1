@@ -770,28 +770,52 @@ function Show-Step5 {
         $y += 16
     }
 
-    $chkWindows = New-Object System.Windows.Forms.CheckBox
-    $chkWindows.Text = "Install Windows Engine (x86_64)"
-    $chkWindows.Location = New-Object System.Drawing.Point(25, 135)
-    $chkWindows.Size = New-Object System.Drawing.Size(300, 20)
-    $chkWindows.Checked = $true
-    $contentPanel.Controls.Add($chkWindows)
+    $lblTag = New-Object System.Windows.Forms.Label
+    $lblTag.Text = "QEMU Release Tag:"
+    $lblTag.Location = New-Object System.Drawing.Point(25, 135)
+    $lblTag.Size = New-Object System.Drawing.Size(120, 20)
+    $contentPanel.Controls.Add($lblTag)
 
-    $chkMacos = New-Object System.Windows.Forms.CheckBox
-    $chkMacos.Text = "Install macOS Engine (Universal)"
-    $chkMacos.Location = New-Object System.Drawing.Point(25, 160)
-    $chkMacos.Size = New-Object System.Drawing.Size(300, 20)
-    $contentPanel.Controls.Add($chkMacos)
+    $txtTag = New-Object System.Windows.Forms.TextBox
+    $txtTag.Text = "qemu-v9.2.0"
+    $txtTag.Location = New-Object System.Drawing.Point(150, 132)
+    $txtTag.Size = New-Object System.Drawing.Size(150, 20)
+    $contentPanel.Controls.Add($txtTag)
 
-    $chkLinux = New-Object System.Windows.Forms.CheckBox
-    $chkLinux.Text = "Install Linux Engine (x86_64)"
-    $chkLinux.Location = New-Object System.Drawing.Point(25, 185)
-    $chkLinux.Size = New-Object System.Drawing.Size(300, 20)
-    $contentPanel.Controls.Add($chkLinux)
+    $chkWin_x64 = New-Object System.Windows.Forms.CheckBox
+    $chkWin_x64.Text = "Windows Engine (x86_64)"
+    $chkWin_x64.Location = New-Object System.Drawing.Point(25, 160)
+    $chkWin_x64.Size = New-Object System.Drawing.Size(250, 20)
+    $chkWin_x64.Checked = $true
+    $contentPanel.Controls.Add($chkWin_x64)
+
+    $chkLin_x64 = New-Object System.Windows.Forms.CheckBox
+    $chkLin_x64.Text = "Linux Engine (x86_64)"
+    $chkLin_x64.Location = New-Object System.Drawing.Point(25, 185)
+    $chkLin_x64.Size = New-Object System.Drawing.Size(250, 20)
+    $contentPanel.Controls.Add($chkLin_x64)
+
+    $chkLin_arm64 = New-Object System.Windows.Forms.CheckBox
+    $chkLin_arm64.Text = "Linux Engine (ARM64)"
+    $chkLin_arm64.Location = New-Object System.Drawing.Point(25, 210)
+    $chkLin_arm64.Size = New-Object System.Drawing.Size(250, 20)
+    $contentPanel.Controls.Add($chkLin_arm64)
+
+    $chkMac_x64 = New-Object System.Windows.Forms.CheckBox
+    $chkMac_x64.Text = "macOS Engine (Intel x86_64)"
+    $chkMac_x64.Location = New-Object System.Drawing.Point(300, 160)
+    $chkMac_x64.Size = New-Object System.Drawing.Size(250, 20)
+    $contentPanel.Controls.Add($chkMac_x64)
+
+    $chkMac_arm64 = New-Object System.Windows.Forms.CheckBox
+    $chkMac_arm64.Text = "macOS Engine (Apple Silicon)"
+    $chkMac_arm64.Location = New-Object System.Drawing.Point(300, 185)
+    $chkMac_arm64.Size = New-Object System.Drawing.Size(250, 20)
+    $contentPanel.Controls.Add($chkMac_arm64)
 
     $btnDownload = New-Object System.Windows.Forms.Button
     $btnDownload.Text = "Download & Extract Engines"
-    $btnDownload.Location = New-Object System.Drawing.Point(25, 215)
+    $btnDownload.Location = New-Object System.Drawing.Point(25, 240)
     $btnDownload.Size = New-Object System.Drawing.Size(250, 32)
     $btnDownload.BackColor = [System.Drawing.Color]::FromArgb(16, 185, 129)
     $btnDownload.ForeColor = [System.Drawing.Color]::White
@@ -799,7 +823,7 @@ function Show-Step5 {
     $contentPanel.Controls.Add($btnDownload)
 
     $pbQemuExtract = New-Object System.Windows.Forms.ProgressBar
-    $pbQemuExtract.Location = New-Object System.Drawing.Point(25, 255)
+    $pbQemuExtract.Location = New-Object System.Drawing.Point(25, 280)
     $pbQemuExtract.Size = New-Object System.Drawing.Size(580, 18)
     $pbQemuExtract.Style = "Blocks"
     $pbQemuExtract.Visible = $false
@@ -807,7 +831,7 @@ function Show-Step5 {
 
     $lblQemuStatus = New-Object System.Windows.Forms.Label
     $lblQemuStatus.Font = $fntMono
-    $lblQemuStatus.Location = New-Object System.Drawing.Point(25, 280)
+    $lblQemuStatus.Location = New-Object System.Drawing.Point(25, 305)
     $lblQemuStatus.Size = New-Object System.Drawing.Size(580, 40)
     $contentPanel.Controls.Add($lblQemuStatus)
 
@@ -817,12 +841,15 @@ function Show-Step5 {
         $pbQemuExtract.Visible = $true
         $pbQemuExtract.Value = 0
         
-        $repoUrl = "https://github.com/aether70/pvm/releases/download/v0.1-beta"
+        $tag = $txtTag.Text.Trim()
+        $repoUrl = "https://github.com/aether70/pvm/releases/download/$tag"
         
         $engines = @()
-        if ($chkWindows.Checked) { $engines += @{ Name="Windows"; Zip="qemu-windows.zip"; Dir="backends\windows\qemu" } }
-        if ($chkMacos.Checked)   { $engines += @{ Name="macOS";   Zip="qemu-macos.zip";   Dir="backends\macos\qemu" } }
-        if ($chkLinux.Checked)   { $engines += @{ Name="Linux";   Zip="qemu-linux.zip";   Dir="backends\linux\qemu" } }
+        if ($chkWin_x64.Checked)   { $engines += @{ Name="Windows x86_64"; Zip="qemu-windows-x86_64.zip"; Dir="backends\windows\qemu" } }
+        if ($chkLin_x64.Checked)   { $engines += @{ Name="Linux x86_64";   Zip="qemu-linux-x86_64.zip";   Dir="backends\linux\qemu" } }
+        if ($chkLin_arm64.Checked) { $engines += @{ Name="Linux ARM64";    Zip="qemu-linux-arm64.zip";    Dir="backends\linux\qemu" } }
+        if ($chkMac_x64.Checked)   { $engines += @{ Name="macOS x86_64";   Zip="qemu-macos-x86_64.zip";   Dir="backends\macos\qemu" } }
+        if ($chkMac_arm64.Checked) { $engines += @{ Name="macOS ARM64";    Zip="qemu-macos-arm64.zip";    Dir="backends\macos\qemu" } }
 
         if ($engines.Count -eq 0) {
             $lblQemuStatus.Text = "[!] Please select at least one engine."
